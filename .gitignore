@@ -87,3 +87,12 @@ GTAGS
 *.orig
 *~
 \#*#
+
+# 我的添加
+!.clang-format
+
+bl31_0x00040000.bin.digest
+bl31_0x00040000.bin.gz
+
+tee.bin.digest
+tee.bin.gz
