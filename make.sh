@@ -6,7 +6,14 @@
 #
 
 set -e
-JOB=`sed -n "N;/processor/p" /proc/cpuinfo|wc -l`
+
+# source "$(dirname "$0")/make_common.sh"
+
+PROJECT_ROOT_MAKE_SH=$(realpath "$(dirname "$0")/..")
+export PS4='+ $(realpath --relative-to="$PROJECT_ROOT_MAKE_SH" "${BASH_SOURCE[0]}"):${LINENO}: '
+set -x
+
+JOB=$(nproc)
 SUPPORT_LIST=`ls configs/*[r,p][x,v,k][0-9][0-9]*_defconfig`
 CMD_ARGS=$1
 
@@ -16,6 +23,7 @@ CROSS_COMPILE_ARM32=aarch64-linux-gnu-
 #../prebuilts/gcc/linux-x86/arm/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
 CROSS_COMPILE_ARM64=/usr/bin/aarch64-linux-gnu-
 #../prebuilts/gcc/linux-x86/aarch64/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+
 ########################################### User not touch #############################################
 # Declare global INI file searching index name for every chip, update in select_chip_info()
 RKCHIP=
@@ -54,6 +62,7 @@ SCRIPT_CHECKCONFIG="${SRCTREE}/scripts/check-rkconfig.sh"
 CC_FILE=".cc"
 REP_DIR="./rep"
 #########################################################################################################
+
 function help()
 {
 	echo
@@ -102,27 +111,15 @@ function filt_val()
 	sed -n "/${1}=/s/${1}=//p" $2 | tr -d '\r' | tr -d '"'
 }
 
-function prepare()
-{
-	if [ -d ${RKBIN_TOOLS} ]; then
-		absolute_path=$(cd `dirname ${RKBIN_TOOLS}`; pwd)
-		RKBIN=${absolute_path}
-	else
-		echo "ERROR: No ../rkbin repository"
-		exit 1
-	fi
-
-	if grep -Eq ''^CONFIG_ARM64=y'|'^CONFIG_ARM64_BOOT_AARCH32=y'' .config ; then
-		ARM64_TRUSTZONE="y"
-	fi
-
-	if grep  -q '^CONFIG_ROCKCHIP_FIT_IMAGE_PACK=y' .config ; then
-		PLAT_TYPE="FIT"
-	elif grep  -q '^CONFIG_SPL_DECOMP_HEADER=y' .config ; then
-		PLAT_TYPE="DECOMP"
-	fi
-}
-
+#
+# process_args() 主要做了如下的事情:
+# 
+# ./scripts/fit.sh --args coolpi_rk3588_cm5v1
+# ./scripts/fit.sh --args --spl-new
+# make coolpi_rk3588_cm5v1_defconfig: 得到.config 备用
+# ARG_LIST_FIT=' --spl-new'
+# ARG_BOARD=coolpi_rk3588_cm5v1
+#
 function process_args()
 {
 	while [ $# -gt 0 ]; do
@@ -270,6 +267,39 @@ function process_args()
 	fi
 }
 
+#
+# prepare() 主要做了如下的事情:
+# 
+# RKBIN 的绝对路径
+# 从.config文件中分析下面的数据
+# ARM64_TRUSTZONE=y
+# PLAT_TYPE=FIT
+#
+function prepare()
+{
+	if [ -d ${RKBIN_TOOLS} ]; then
+		absolute_path=$(cd `dirname ${RKBIN_TOOLS}`; pwd)
+		RKBIN=${absolute_path}
+	else
+		echo "ERROR: No ../rkbin repository"
+		exit 1
+	fi
+
+	if grep -Eq ''^CONFIG_ARM64=y'|'^CONFIG_ARM64_BOOT_AARCH32=y'' .config ; then
+		ARM64_TRUSTZONE="y"
+	fi
+
+	if grep  -q '^CONFIG_ROCKCHIP_FIT_IMAGE_PACK=y' .config ; then
+		PLAT_TYPE="FIT"
+	elif grep  -q '^CONFIG_SPL_DECOMP_HEADER=y' .config ; then
+		PLAT_TYPE="DECOMP"
+	fi
+}
+
+#
+# select_toolchain() 主要做了如下的事情:
+# 确定编译器是 CROSS_COMPILE_ARM32 还是 CROSS_COMPILE_ARM64
+# 
 function select_toolchain()
 {
 	# If no outer CROSS_COMPILE, look for it from CC_FILE.
@@ -311,10 +341,10 @@ function select_toolchain()
 
 #
 # We select chip info to do:
-#	1. RKCHIP:        fixup platform configure
-#	2. RKCHIP_LOADER: search ini file to pack loader
-#	3. RKCHIP_TRUST:  search ini file to pack trust
-#	4. RKCHIP_LABEL:  show build message
+#	1. RKCHIP:        fixup platform configure | RKCHIP=RK3588
+#	2. RKCHIP_LOADER: search ini file to pack loader | RKCHIP_LOADER=RK3588
+#	3. RKCHIP_TRUST:  search ini file to pack trust | RKCHIP_TRUST=RK3588
+#	4. RKCHIP_LABEL:  show build message | RKCHIP_LABEL=RK3588
 #
 function select_chip_info()
 {
@@ -336,7 +366,15 @@ function select_chip_info()
 	fi
 }
 
+#
 # Priority: default < CHIP_CFG_FIXUP_TABLE() < make.sh args
+# fixup_platform_configure()  主要做了如下的事情:
+# RSA=
+# PLAT_UBOOT_SIZE='--size  '
+# PLAT_TRUST_SIZE='--size  '
+# PLAT_SHA='--sha '
+# PLAT_RSA='--rsa '
+#
 function fixup_platform_configure()
 {
 	U_KB=`filt_val "CONFIG_UBOOT_SIZE_KB" .config`
@@ -361,6 +399,12 @@ function fixup_platform_configure()
 	fi
 }
 
+
+# select_ini_file()  主要做了如下的事情:
+#
+# INI_LOADER=../rkbin/RKBOOT/RK3588MINIALL.ini
+# INI_TRUST=../rkbin/RKTRUST/RK3588TRUST.ini
+#
 function select_ini_file()
 {
 	# default
@@ -390,6 +434,24 @@ function select_ini_file()
 	fi
 }
 
+# 
+# handle_args_late()  主要做了如下的事情:
+# ARG_LIST_FIT=' --spl-new --ini-trust ../rkbin/RKTRUST/RK3588TRUST.ini --ini-loader ../rkbin/RKBOOT/RK3588MINIALL.ini'
+# 
+function handle_args_late()
+{
+	ARG_LIST_FIT="${ARG_LIST_FIT} --ini-trust ${INI_TRUST} --ini-loader ${INI_LOADER}"
+}
+
+# 
+# sub_commands()  主要做了如下的事情:
+# CMD=coolpi_rk3588_cm5v1
+# ARG=coolpi_rk3588_cm5v1
+# ELF=u-boot
+# MAP=u-boot.map
+# SYM=u-boot.sym
+# 执行函数: unwind_addr_or_continue()
+# 
 function sub_commands()
 {
 	# skip "--" parameter, such as "--rollback-index-..."
@@ -474,6 +536,12 @@ function sub_commands()
 	esac
 }
 
+#
+# unwind_addr_or_continue()  主要做了如下的事情:
+# FUNCADDR=
+# RELOCOFF=
+# FUNCADDR=
+#
 function unwind_addr_or_continue()
 {
 	FUNCADDR=${ARG_FUNCADDR}
@@ -755,17 +823,16 @@ function pack_fit_image()
 	echo "pack uboot.img okay! Input: ${INI_TRUST}"
 }
 
-function handle_args_late()
-{
-	ARG_LIST_FIT="${ARG_LIST_FIT} --ini-trust ${INI_TRUST} --ini-loader ${INI_LOADER}"
-}
-
 function clean_files()
 {
 	rm spl/u-boot-spl.dtb tpl/u-boot-tpl.dtb u-boot.dtb -f
 	rm spl/u-boot-spl tpl/u-boot-tpl u-boot -f
 }
 
+#
+# pack_images() 主要作用是怎样打包:
+# pack_fit_image --spl-new --ini-trust ../rkbin/RKTRUST/RK3588TRUST.ini --ini-loader ../rkbin/RKBOOT/RK3588MINIALL.ini
+# 
 function pack_images()
 {
 	if [ "${ARG_RAW_COMPILE}" != "y" ]; then
@@ -794,17 +861,52 @@ function finish()
 	fi
 }
 
+echo -e "\n| process_args() +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 process_args $*
+echo -e "\n| prepare() ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 prepare
+echo -e "\n| select_toolchain() +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 select_toolchain
+echo -e "\n| select_chip_info() +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 select_chip_info
+echo -e "\n| fixup_platform_configure() +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 fixup_platform_configure
+echo -e "\n| select_ini_file() ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 select_ini_file
+echo -e "\n| handle_args_late() +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 handle_args_late
+echo -e "\n| sub_commands() +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 sub_commands
-clean_files
-make PYTHON=python2 ${ARG_SPL_FWVER} ${ARG_FWVER} CROSS_COMPILE=${TOOLCHAIN} all --jobs=${JOB}
+echo -e "\n| clean_files() ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
+# clean_files
+echo -e "\n| Configure End ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
+
+echo -e "\n| Compile Start ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
+echo "ARG_SPL_FWVER= ${ARG_SPL_FWVER}"
+echo "ARG_FWVER= ${ARG_FWVER}"
+echo "TOOLCHAIN= ${TOOLCHAIN}"
+echo "JOB= ${JOB}"
+
+# 下面目的是只有第一次执行make.sh才执行 clean
+# 如果变量 MY_DEBUG 在环境中没定义，则初始化为 0
+if [ -z "$MY_DEBUG" ]; then
+    export MY_DEBUG=0
+fi
+# 只有第一次（MY_DEBUG == 0）才执行 clean
+if [ "$MY_DEBUG" -eq 0 ]; then
+    make PYTHON=python2 ${ARG_SPL_FWVER} ${ARG_FWVER} CROSS_COMPILE=${TOOLCHAIN} clean
+    export MY_DEBUG=1
+else
+    echo -e "MY_DEBUG=${MY_DEBUG}\n"
+fi
+	
+# 给 Makefile 中的 $(PYTHON) 变量赋值为 python2
+make PYTHON=python2 ${ARG_SPL_FWVER} ${ARG_FWVER} CROSS_COMPILE=${TOOLCHAIN} all --jobs=${JOB} 
+echo -e "\n| Compile End ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
+
+echo -e "\n| pack_images() ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 pack_images
+
 if [ -d out/$ARG_BOARD ]; then
     cp -rf *_spl_loader_*.bin out/$ARG_BOARD/loader.bin
 	cp -rf uboot.img out/$ARG_BOARD
@@ -813,8 +915,12 @@ else
 	cp -rf *_spl_loader_*.bin out/$ARG_BOARD/loader.bin
 	cp -rf uboot.img out/$ARG_BOARD
 fi
+
 ARG_SPL_BIN="spl/u-boot-spl.bin"
+
+echo -e "\n| pack_idblock() ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 pack_idblock
+
 dd if=/dev/zero of=${ARG_BOARD}_nor_upgrade.img bs=1K count=8192
 dd if=idblock.bin of=${ARG_BOARD}_nor_upgrade.img bs=1K seek=32
 dd if=idblock.bin of=${ARG_BOARD}_nor_upgrade.img bs=1K seek=544
@@ -823,6 +929,11 @@ dd if=uboot.img   of=${ARG_BOARD}_nor_upgrade.img bs=1K seek=2048
 cp ${ARG_BOARD}_nor_upgrade.img out/$ARG_BOARD
 rm ${ARG_BOARD}_nor_upgrade.img
 rm idblock.bin
+
+echo -e "\n| finish() ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |"
 finish
-echo ${TOOLCHAIN}
+
+echo -e "\nTOOLCHAIN: ${TOOLCHAIN}\n"
+
 date
+echo -e "\n| All Work Complete +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ |\n"

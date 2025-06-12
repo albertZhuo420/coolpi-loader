@@ -7,6 +7,10 @@
 
 set -e
 
+PROJECT_ROOT_SPL_SH=$(realpath "$(dirname "$0")/..")
+export PS4='+ $(realpath --relative-to="$PROJECT_ROOT_SPL_SH" "${BASH_SOURCE[0]}"):${LINENO}: '
+set -x
+
 if [ $# -eq 0 ]; then
 	echo "ERROR: No args of $0"
 	exit 1
