@@ -96,3 +96,4 @@ bl31_0x00040000.bin.gz
 
 tee.bin.digest
 tee.bin.gz
+make_new_log.txt
