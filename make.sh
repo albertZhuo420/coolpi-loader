@@ -7,11 +7,7 @@
 
 set -e
 
-# source "$(dirname "$0")/make_common.sh"
-
-PROJECT_ROOT_MAKE_SH=$(realpath "$(dirname "$0")/..")
-export PS4='+ $(realpath --relative-to="$PROJECT_ROOT_MAKE_SH" "${BASH_SOURCE[0]}"):${LINENO}: '
-set -x
+source "$(dirname "$0")/make_common.sh"
 
 JOB=$(nproc)
 SUPPORT_LIST=`ls configs/*[r,p][x,v,k][0-9][0-9]*_defconfig`

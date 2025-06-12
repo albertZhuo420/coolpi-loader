@@ -6,9 +6,7 @@
 #
 set -e
 
-PROJECT_ROOT_FIT_CORE_SH=$(realpath "$(dirname "$0")/..")
-export PS4='+ $(realpath --relative-to="$PROJECT_ROOT_FIT_CORE_SH" "${BASH_SOURCE[0]}"):${LINENO}: '
-set -x
+source "$(dirname "$0")/../make_common.sh"
 
 FIT_DIR="fit"
 IMG_UBOOT="uboot.img"
