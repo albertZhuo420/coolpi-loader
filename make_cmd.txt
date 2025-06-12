@@ -1,2 +1,6 @@
+./make_new.sh coolpi_rk3588_cm5v1 --spl-new
+
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- distclean
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
+
+./tools/mkimage -n rk3588 -T rksd -d ../rkbin/bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.18.bin:spl/u-boot-spl.bin idbloader.img
